@@ -34,7 +34,7 @@ await browser.close(); s.close()
 // touch-style pillar jumping: one tap right after the jump (feet still inside the target cell) must still place
 {
   const s2 = await serve(5326); const { browser: b2, page: p2 } = await open(chromium, 5326)
-  const r2 = await p2.evaluate(() => { const g = window.__PEKACUBOS__; localStorage.clear(); g.newWorld(42); g.play(); g.manual = true; g.mobsEnabled = false
+  const r2 = await p2.evaluate(async () => { const g = window.__PEKACUBOS__; localStorage.clear(); g.newWorld(42); g.play(); g.manual = true; g.mobsEnabled = false; await g.whenIdle()
     const P = g.player; g.inv[8] = 50; g.sel = g.hotbar.indexOf(8); P.pitch = -Math.PI / 2 + 0.01; g.advance(0.5); const y0 = P.pos.y; let n = 0
     for (let k = 0; k < 10; k++) { g.input.jump = true; g.advance(1 / 60); g.input.jump = false; g.advance(0.05); g.place(); g.advance(1.2); n++ }
     return { gained: P.pos.y - y0 } })
