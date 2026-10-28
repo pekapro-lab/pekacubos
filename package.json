@@ -1,7 +1,7 @@
 {
   "name": "pekacubos",
   "private": true,
-  "version": "2.0.1",
+  "version": "2.0.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,9 @@
     "test:touch": "node scripts/touch.mjs",
     "test:save": "node scripts/save.mjs",
     "test:perf": "node scripts/perf.mjs",
-    "test:all": "vite build && node scripts/blocks.mjs && node scripts/collisions.mjs && node scripts/touch.mjs && node scripts/save.mjs && node scripts/perf.mjs && node scripts/crafting.mjs && node scripts/mobs.mjs && node scripts/water.mjs && node scripts/light.mjs && node scripts/tower.mjs && node scripts/compat.mjs && node scripts/fallback.mjs",
+    "test:all": "vite build && node scripts/blocks.mjs && node scripts/collisions.mjs && node scripts/touch.mjs && node scripts/save.mjs && node scripts/perf.mjs && node scripts/crafting.mjs && node scripts/mobs.mjs && node scripts/water.mjs && node scripts/light.mjs && node scripts/tower.mjs && node scripts/compat.mjs && node scripts/fallback.mjs && node scripts/water-exit.mjs && node scripts/sky-shots.mjs",
+    "test:sky": "node scripts/sky-shots.mjs",
+    "test:water-exit": "node scripts/water-exit.mjs",
     "test:crafting": "node scripts/crafting.mjs",
     "test:mobs": "node scripts/mobs.mjs",
     "test:water": "node scripts/water.mjs",

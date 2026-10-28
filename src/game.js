@@ -14,12 +14,13 @@ const SKY_DAY = new THREE.Color(0x8ccbf0), SKY_NIGHT = new THREE.Color(0x05070f)
 
 const VS = `attribute vec3 light; varying vec2 vUv; varying vec3 vL; varying float vD;
 void main(){ vUv = uv; vL = light; vec4 mv = modelViewMatrix * vec4(position, 1.0); vD = -mv.z; gl_Position = projectionMatrix * mv; }`
-const FS = `precision mediump float; uniform sampler2D map; uniform float daylight, opacity, alphaTest, fogNear, fogFar; uniform vec3 fogColor;
+const FS = `precision mediump float; uniform sampler2D map; uniform float daylight, moon, opacity, alphaTest, fogNear, fogFar; uniform vec3 fogColor;
 varying vec2 vUv; varying vec3 vL; varying float vD;
 float lv(float l){ return pow(0.8, (1.0 - l) * 15.0); }
 void main(){ vec4 t = texture2D(map, vUv); if (t.a < alphaTest) discard;
   float s = lv(vL.x) * daylight; float b = vL.y > 0.01 ? lv(vL.y) : 0.0;
-  vec3 lc = max(max(vec3(s), vec3(b, b * 0.82, b * 0.6)), vec3(0.025));
+  vec3 mo = vec3(0.62, 0.72, 1.0) * (lv(vL.x) * moon); // bluish moonlight under open sky
+  vec3 lc = max(max(vec3(s) + mo, vec3(b, b * 0.82, b * 0.6)), vec3(0.025));
   vec3 c = t.rgb * lc * vL.z; float f = smoothstep(fogNear, fogFar, vD);
   gl_FragColor = vec4(mix(c, fogColor, f), t.a * opacity); }`
 
@@ -35,7 +36,7 @@ export class Game {
     this.scene = new THREE.Scene()
     this.camera = new THREE.PerspectiveCamera(72, 1, 0.08, 400); this.camera.rotation.order = 'YXZ'
     const atlas = makeAtlas(); this.atlas = atlas
-    const uni = () => ({ map: { value: atlas.tex }, daylight: { value: 1 }, opacity: { value: 1 }, alphaTest: { value: 0.5 }, fogColor: { value: new THREE.Color() }, fogNear: { value: 30 }, fogFar: { value: 60 } })
+    const uni = () => ({ map: { value: atlas.tex }, daylight: { value: 1 }, moon: { value: 0 }, opacity: { value: 1 }, alphaTest: { value: 0.5 }, fogColor: { value: new THREE.Color() }, fogNear: { value: 30 }, fogFar: { value: 60 } })
     this.matSolid = new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: FS, uniforms: uni() })
     this.matWater = new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: FS, uniforms: uni(), transparent: true, depthWrite: false, side: THREE.DoubleSide })
     this.matWater.uniforms.opacity.value = 0.72; this.matWater.uniforms.alphaTest.value = 0
@@ -230,7 +231,7 @@ export class Game {
     if (!e || !e.light) return { sky: 15, blk: 0 }
     const v = e.light[(y * CS + (z - cz * CS)) * CS + (x - cx * CS)]; return { sky: v >> 4, blk: v & 15 }
   }
-  lightAtBody(x, y, z) { const l = this.lightAt(x, y, z); return Math.max(Math.pow(0.8, 15 - l.sky) * this.daylight(), l.blk ? Math.pow(0.8, 15 - l.blk) : 0, 0.05) }
+  lightAtBody(x, y, z) { const l = this.lightAt(x, y, z); return Math.max(Math.pow(0.8, 15 - l.sky) * (this.daylight() + this.moonlight()), l.blk ? Math.pow(0.8, 15 - l.blk) : 0, 0.05) }
   // ---------- physics ----------
   solidAt(x, y, z) { return boxHits(this.world, { x: x + 0.5, y, z: z + 0.5 }, 0.1, 0.1) }
   boxHits(p) { return boxHits(this.world, p, W, HGT) }
@@ -244,9 +245,20 @@ export class Game {
     const vx = (sx * c - sz * s) * sp, vz = (-sx * s - sz * c) * sp
     const kb = this.knock || 0; this.knock = Math.max(0, kb - dt)
     pl.vel.x = kb > 0 ? pl.vel.x * 0.9 : vx; pl.vel.z = kb > 0 ? pl.vel.z * 0.9 : vz
-    if (pl.inWater) { pl.vel.y -= 9 * dt; if (inp.jump) pl.vel.y = 3; pl.vel.y = Math.max(pl.vel.y, -3) }
-    else { pl.vel.y -= 28 * dt; if (inp.jump && pl.onGround) pl.vel.y = 8.6; pl.vel.y = Math.max(pl.vel.y, -40) }
-    moveBody(this.world, pl, dt)
+    // swimming: water is never solid; holding jump swims up steadily, a short "wet" window after the feet
+    // leave the surface lets you keep rising and climb a 1-block shore (Minecraft-like water exit)
+    const wb = this.world.get(Math.floor(pl.pos.x), Math.floor(pl.pos.y + 0.05), Math.floor(pl.pos.z)) === WATER
+    if (pl.inWater || wb) pl.wetT = 0.35; else pl.wetT = Math.max(0, (pl.wetT || 0) - dt)
+    if (pl.inWater) { pl.vel.y -= 9 * dt; if (inp.jump) pl.vel.y = pl.onGround ? 6 : Math.max(pl.vel.y, 4); pl.vel.y = Math.max(pl.vel.y, -3) }
+    else {
+      pl.vel.y -= 28 * dt
+      if (inp.jump && pl.onGround) pl.vel.y = 8.6
+      else if (inp.jump && pl.wetT > 0 && pl.vel.y < 4) pl.vel.y = 4 // still bobbing at the surface: keep swimming up
+      pl.vel.y = Math.max(pl.vel.y, -40)
+    }
+    const hitWall = moveBody(this.world, pl, dt)
+    // at the surface pushing into a shore wall while holding jump: boost up so the step can be cleared
+    if (hitWall && inp.jump && pl.wetT > 0 && !pl.onGround && pl.vel.y < 7.6) pl.vel.y = 7.6
     // fall damage
     if (pl.onGround || pl.inWater) {
       if (this.fallTop != null && pl.onGround && !pl.inWater) { const d = this.fallTop - pl.pos.y; if (d > 3.5) this.damage(Math.floor(d - 3), null, 'caída') }
@@ -323,7 +335,7 @@ export class Game {
     const p = this.player.pos
     if (!BLOCKS[id].nonSolid && x + 1 > p.x - W && x < p.x + W && z + 1 > p.z - W && z < p.z + W && y + 1 > p.y && y < p.y + HGT) {
       // jumping onto your own pillar: remember the tap and place as soon as the feet clear the cell
-      if (!this.player.onGround && !this.retrying) this.placeBuf = 0.6
+      if ((!this.player.onGround || this.player.inWater) && !this.retrying) this.placeBuf = this.player.inWater ? 1.2 : 0.6
       return false
     }
     for (const m of this.mobs) if (!BLOCKS[id].nonSolid && x + 1 > m.pos.x - m.w && x < m.pos.x + m.w && z + 1 > m.pos.z - m.w && z < m.pos.z + m.w && y + 1 > m.pos.y && y < m.pos.y + m.h) return false
@@ -458,7 +470,7 @@ export class Game {
     if (!this.ready) { this.waitT = (this.waitT || 0) + dt; if (this.groundReady() || this.waitT > 6) { this.ready = true; this.fallTop = null } }
     if (this.ready) this.physics(dt)
     this.updateBreak(dt)
-    if (this.placeBuf > 0) { this.placeBuf -= dt; this.retrying = true; if (this.place()) this.placeBuf = 0; this.retrying = false; if (this.player.onGround && this.player.vel.y <= 0) this.placeBuf = 0 }
+    if (this.placeBuf > 0) { this.placeBuf -= dt; this.retrying = true; if (this.place()) this.placeBuf = 0; this.retrying = false; if (this.player.onGround && !this.player.inWater && this.player.vel.y <= 0) this.placeBuf = 0 }
     this.time = (this.time + dt / DAY) % 1
     this.waterT -= dt
     if (this.waterT <= 0) { // throttled cellular water + batched remeshing
@@ -485,6 +497,31 @@ export class Game {
     if (q >= 1) this.viewDist = Math.max(2, Math.min(this.viewDist, q === 1 ? 3 : 2))
     this.resize(); if (auto) this.toast?.('Calidad reducida para ir más fluido'); this.emit()
   }
+  moonlight() { return 0.34 * Math.max(0, Math.min(1, (0.6 - this.daylight()) / 0.5)) }
+  // ---------- sky: blocky sun + moon on an orbit around the camera, stars at night (all procedural) ----------
+  initSky() {
+    const tex = (draw) => { const c = document.createElement('canvas'); c.width = c.height = 16; const g = c.getContext('2d'); draw(g); const t = new THREE.CanvasTexture(c); t.magFilter = t.minFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace; return t }
+    const sunT = tex((g) => { g.fillStyle = '#fff6b0'; g.fillRect(0, 0, 16, 16); g.fillStyle = '#ffe14d'; g.fillRect(2, 2, 12, 12); g.fillStyle = '#fffbe0'; g.fillRect(4, 4, 8, 8) })
+    const moonT = tex((g) => { g.fillStyle = '#d8deea'; g.fillRect(0, 0, 16, 16); g.fillStyle = '#aab3c6'; for (const [x, y, w] of [[3, 3, 3], [9, 5, 4], [5, 10, 3], [11, 11, 2]]) g.fillRect(x, y, w, w) })
+    const mk = (t, size) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: t, fog: false, depthWrite: false, depthTest: false })); m.renderOrder = -10; m.frustumCulled = false; return m } // opaque + drawn first: terrain covers it
+    this.sky = new THREE.Group(); this.sun = mk(sunT, 34); this.moon = mk(moonT, 24); this.sky.add(this.sun, this.moon)
+    const n = this.mobile ? 160 : 320, pos = new Float32Array(n * 3); let r = 12345
+    const rnd = () => ((r = (r * 16807) % 2147483647) / 2147483647)
+    for (let i = 0; i < n; i++) { const u = rnd() * 2 - 1, a = rnd() * Math.PI * 2, q = Math.sqrt(1 - u * u); pos.set([q * Math.cos(a) * 180, Math.abs(u) * 180 + 10, q * Math.sin(a) * 180], i * 3) }
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: this.mobile ? 2 : 1.6, sizeAttenuation: false, fog: false, depthWrite: false, depthTest: false }))
+    this.stars.renderOrder = -11; this.stars.frustumCulled = false; this.sky.add(this.stars)
+    this.scene.add(this.sky)
+  }
+  updateSky(L) {
+    if (!this.sky) this.initSky()
+    this.sky.position.copy(this.camera.position)
+    const a = (this.time - 0.25) * Math.PI * 2, R = 160 // time 0.25 = noon (sun overhead), 0.75 = midnight
+    this.sun.position.set(Math.sin(a) * R, Math.cos(a) * R, 0); this.moon.position.set(-Math.sin(a) * R, -Math.cos(a) * R, 0)
+    this.sun.lookAt(this.sky.position); this.moon.lookAt(this.sky.position)
+    this.sun.visible = this.sun.position.y > -20; this.moon.visible = this.moon.position.y > -20
+    this.stars.rotation.z = a; const so = Math.max(0, Math.min(1, (0.45 - L) / 0.35)); this.stars.material.color.setScalar(so); this.stars.visible = so > 0.01
+  }
   daylight() { return Math.min(1, Math.max(0.06, 0.5 + 0.8 * Math.sin((this.time - 0.25) * Math.PI * 2 + Math.PI / 2))) }
   render() {
     const p = this.player, c = this.camera
@@ -493,8 +530,9 @@ export class Game {
     const L = this.daylight()
     const sky = SKY_NIGHT.clone().lerp(SKY_DAY, (L - 0.06) / 0.94)
     const fog = sky.clone().convertLinearToSRGB()
-    for (const m of [this.matSolid, this.matWater]) { m.uniforms.daylight.value = L; m.uniforms.fogColor.value.copy(fog) }
+    for (const m of [this.matSolid, this.matWater]) { m.uniforms.daylight.value = L; m.uniforms.moon.value = this.moonlight(); m.uniforms.fogColor.value.copy(fog) }
     this.renderer.setClearColor(sky)
+    this.updateSky(L)
     const e = this.eye(), hb = this.lightAtBody(e.x, e.y, e.z)
     this.armMat.color.setScalar(hb); this.sleeveMat.color.setScalar(hb); this.held.material.color.setScalar(Math.max(0.3, hb)); this.heldItem.material.color.setScalar(Math.max(0.3, hb))
     const h = this.running ? this.raycast() : null
