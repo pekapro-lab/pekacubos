@@ -67,16 +67,39 @@ export class Game {
   emit() { for (const f of this.listeners) f() }
   // ---------- meshing workers ----------
   initWorkers() {
-    this.workers = []
+    this.workers = []; this.jobs = new Map(); this.workerOK = false; this.workerMode = 'main'
+    if (typeof Worker === 'undefined' || this.noWorkers) return
     try {
       const n = Math.max(1, Math.min(2, (navigator.hardwareConcurrency || 2) - 1))
       for (let i = 0; i < n; i++) {
         const w = new Worker(new URL('./mesh.worker.js', import.meta.url), { type: 'module' })
-        w.busy = false; w.onmessage = (e) => { w.busy = false; this.inflight--; this.applyMesh(e.data); this.pump() }
-        w.onerror = () => { this.workers = [] }
+        w.busy = false
+        w.onmessage = (e) => {
+          if (!this.workers.includes(w)) return
+          const d = e.data; if (!d || d.error || !d.light) { this.workerFail('respuesta inválida: ' + (d && d.error)); return }
+          w.busy = false; this.inflight--; this.jobs.delete(d.job); this.workerOK = true; this.applyMesh(d); this.pump()
+        }
+        w.onerror = (e) => { e.preventDefault?.(); this.workerFail('error: ' + (e.message || 'worker')) }
+        w.onmessageerror = () => this.workerFail('messageerror')
         this.workers.push(w)
       }
-    } catch { this.workers = [] }
+      this.workerMode = 'worker'; this.workerStart = performance.now()
+    } catch (err) { this.workerFail('no se pudo crear: ' + err) }
+  }
+  // Any worker problem -> terminate them all, re-queue their chunks and mesh on the main thread from now on.
+  workerFail(why) {
+    if (this.workerMode === 'main' && !this.workers.length) return
+    console.warn('[Pekacubos] mesh worker desactivado (' + why + '); mallado en el hilo principal')
+    this.workerError = why
+    for (const w of this.workers) { try { w.terminate() } catch {} }
+    this.workers = []; this.workerMode = 'main'; this.inflight = 0
+    for (const j of this.jobs.values()) if (this.meshes.has(j.k) && !this.queue.some((q) => q.k === j.k)) this.queue.unshift({ k: j.k, cx: j.cx, cz: j.cz })
+    this.jobs.clear(); this.pump()
+  }
+  checkWorkers() { // watchdog: a job unanswered for 2 s (or no first answer at all) means the worker is broken
+    if (this.workerMode !== 'worker') return
+    const now = performance.now()
+    for (const j of this.jobs.values()) if (now - j.t > 2000) { this.workerFail('sin respuesta en 2 s'); return }
   }
   neighbourhood(cx, cz) {
     const out = []
@@ -89,7 +112,8 @@ export class Game {
     if (this.queue.some((q) => q.k === k)) { if (front) { this.queue = this.queue.filter((q) => q.k !== k); this.queue.unshift({ k, cx, cz }) } }
     else if (front) this.queue.unshift({ k, cx, cz }); else this.queue.push({ k, cx, cz })
   }
-  pump() {
+  pump(syncBudget = this.syncBudget ?? 2) {
+    let sync = 0
     while (this.queue.length) {
       const free = this.workers.find((w) => !w.busy)
       const q = this.queue[0]; const e = this.meshes.get(q.k)
@@ -98,8 +122,13 @@ export class Game {
       this.queue.shift()
       const ver = e.ver, data = { job: ++this.jobSeq, chunks: this.neighbourhood(q.cx, q.cz), cx: q.cx, cz: q.cz }
       e.pending = ver
-      if (free) { free.busy = true; this.inflight++; free.postMessage(data) }
-      else this.applyMesh({ ...buildChunk(data.chunks, q.cx, q.cz), cx: q.cx, cz: q.cz })
+      if (free) {
+        try { free.postMessage(data); free.busy = true; this.inflight++; this.jobs.set(data.job, { k: q.k, cx: q.cx, cz: q.cz, t: performance.now() }) }
+        catch (err) { this.queue.unshift(q); this.workerFail('postMessage: ' + err); return }
+      } else {
+        if (sync >= syncBudget) { this.queue.unshift(q); return } // main-thread fallback: a few chunks per frame
+        sync++; this.applyMesh({ ...buildChunk(data.chunks, q.cx, q.cz), cx: q.cx, cz: q.cz })
+      }
     }
   }
   applyMesh(r) {
@@ -117,10 +146,13 @@ export class Game {
     }
     e.light = r.light; e.built = true
   }
-  async whenIdle(maxMs = 20000) { const t = performance.now(); this.updateChunks(999); while (!this.isIdle() && performance.now() - t < maxMs) { this.updateChunks(999); await new Promise((r) => setTimeout(r, 10)) } return this.isIdle() }
+  async whenIdle(maxMs = 20000) { const t = performance.now(); this.updateChunks(999); while (!this.isIdle() && performance.now() - t < maxMs) { this.checkWorkers(); this.updateChunks(999); this.pump(999); await new Promise((r) => setTimeout(r, 10)) } return this.isIdle() }
+  // the player is held in place until the chunk under them is meshed (visible); collisions always use block data
+  groundReady() { const e = this.meshes.get(ckey(Math.floor(this.player.pos.x / CS), Math.floor(this.player.pos.z / CS))); return !!(e && e.built) }
   isIdle() { return !this.queue.length && !this.inflight && !this.pendingChunks && [...this.meshes.values()].every((e) => e.built) }
   // ---------- world lifecycle ----------
   setupWorld(seed) {
+    this.ready = false; this.waitT = 0
     this.clearMeshes(); for (const m of this.mobs) m.dispose(this.scene); this.mobs = []
     this.world = new World(seed); this.world.onChange = (x, y, z, w) => this.dirty(x, y, z, w)
   }
@@ -187,7 +219,7 @@ export class Game {
     const room = Math.max(0, budget - this.queue.length)
     for (let i = 0; i < Math.min(room, want.length); i++) { const [, cx, cz] = want[i]; this.meshes.set(ckey(cx, cz), { cx, cz }); this.schedule(cx, cz) }
     this.pendingChunks = Math.max(0, want.length - room)
-    this.pump()
+    this.checkWorkers(); this.pump()
     const far = r * CS
     for (const m of [this.matSolid, this.matWater]) { m.uniforms.fogNear.value = far * 0.55; m.uniforms.fogFar.value = far * 0.95 }
   }
@@ -423,7 +455,8 @@ export class Game {
   // ---------- frame ----------
   update(dt) {
     this.clock += dt
-    this.physics(dt)
+    if (!this.ready) { this.waitT = (this.waitT || 0) + dt; if (this.groundReady() || this.waitT > 6) { this.ready = true; this.fallTop = null } }
+    if (this.ready) this.physics(dt)
     this.updateBreak(dt)
     if (this.placeBuf > 0) { this.placeBuf -= dt; this.retrying = true; if (this.place()) this.placeBuf = 0; this.retrying = false; if (this.player.onGround && this.player.vel.y <= 0) this.placeBuf = 0 }
     this.time = (this.time + dt / DAY) % 1
