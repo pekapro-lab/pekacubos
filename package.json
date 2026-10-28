@@ -1,0 +1,28 @@
+{
+  "name": "pekacubos",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:apk": "VITE_BASE=./ vite build --outDir www && npx cap sync android",
+    "test:blocks": "node scripts/blocks.mjs",
+    "test:collide": "node scripts/collisions.mjs",
+    "test:touch": "node scripts/touch.mjs",
+    "test:save": "node scripts/save.mjs",
+    "test:perf": "node scripts/perf.mjs",
+    "test:all": "vite build && node scripts/blocks.mjs && node scripts/collisions.mjs && node scripts/touch.mjs && node scripts/save.mjs && node scripts/perf.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "playwright": "^1.64.1",
+    "vite": "^7.3.7"
+  }
+}

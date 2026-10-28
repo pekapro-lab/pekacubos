@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0f24" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<link rel="icon" href="./icon.png" />
+<link rel="apple-touch-icon" href="./icon.png" />
+<title>Pekacubos</title>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud" class="hidden">
+  <div id="touch"></div>
+  <div id="cross"></div>
+  <div id="joyhint" class="tb"></div>
+  <div id="joy"><div id="knob"></div></div>
+  <div id="bname"></div>
+  <div id="hotbar"></div>
+  <div id="toast"></div>
+  <button id="pause" title="Menú">☰</button>
+  <button id="bjump" class="btn tb">Saltar</button>
+  <button id="bbreak" class="btn tb">Romper</button>
+  <button id="bplace" class="btn tb">Poner</button>
+</div>
+<div id="menu">
+  <div class="panel">
+    <h1>Pekacubos</h1>
+    <div class="sub">Un mundo de cubos para romper y construir</div>
+    <button id="play">Jugar</button>
+    <button id="new">Nuevo mundo</button>
+    <label>Distancia <input id="dist" type="range" min="2" max="8" step="1" /><b id="distv"></b></label>
+    <label>Sonido <input id="vol" type="range" min="0" max="100" step="5" /><b id="volv"></b></label>
+    <div class="help">
+      <b>Móvil:</b> joystick a la izquierda, arrastra a la derecha para mirar; toca para poner, mantén pulsado para romper.<br />
+      <b>PC:</b> WASD para andar, espacio para saltar, ratón para mirar; clic izquierdo rompe, clic derecho pone; 1–9 o rueda para elegir bloque.
+    </div>
+    <div id="ver"></div>
+  </div>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "appId": "com.pekapro.pekacubos",
+  "appName": "Pekacubos",
+  "webDir": "www",
+  "android": { "allowMixedContent": false, "backgroundColor": "#0a0f24" },
+  "server": { "androidScheme": "https" }
+}
