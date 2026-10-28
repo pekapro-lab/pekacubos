@@ -3,7 +3,7 @@ import { chromium } from 'playwright'
 import { serve, open, check } from './serve.mjs'
 const s = await serve(5312); const { browser, page, errs } = await open(chromium, 5312)
 const r = await page.evaluate(() => {
-  const g = window.__PEKACUBOS__; localStorage.clear(); g.newWorld(7); g.play(); g.manual = true
+  const g = window.__PEKACUBOS__; localStorage.clear(); g.newWorld(7); g.play(); g.manual = true; g.mobsEnabled = false; g.noDamage = true
   const out = {}; const P = g.player
   g.advance(2); const y0 = P.pos.y; g.advance(3); out.stand = P.onGround && Math.abs(P.pos.y - y0) < 1e-6
   // drop from the sky

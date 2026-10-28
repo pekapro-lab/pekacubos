@@ -19,11 +19,24 @@
   <div id="bname"></div>
   <div id="hotbar"></div>
   <div id="toast"></div>
+  <div id="hp"></div>
+  <div id="hurt"></div>
   <button id="pause" title="Menú">☰</button>
+  <button id="bcraft" title="Inventario y fabricación (E)">🎒</button>
   <button id="bjump" class="btn tb">Saltar</button>
   <button id="bbreak" class="btn tb">Romper</button>
   <button id="bplace" class="btn tb">Poner</button>
 </div>
+<div id="craft" class="hidden">
+  <div class="cpanel">
+    <div class="chead"><b>Inventario y fabricación</b><button id="craftclose">Cerrar ✕</button></div>
+    <div class="ccols">
+      <div><div class="ctitle">Inventario <small>(toca para ponerlo en el hueco elegido)</small></div><div id="invgrid"></div></div>
+      <div><div class="ctitle">Recetas</div><div id="recipes"></div></div>
+    </div>
+  </div>
+</div>
+<div id="dead" class="hidden"><div class="panel"><h2>¡Te has quedado sin vida!</h2><div id="deadwhy"></div><button id="respawn">Reaparecer</button></div></div>
 <div id="menu">
   <div class="panel">
     <h1>Pekacubos</h1>
@@ -31,10 +44,11 @@
     <button id="play">Jugar</button>
     <button id="new">Nuevo mundo</button>
     <label>Distancia <input id="dist" type="range" min="2" max="8" step="1" /><b id="distv"></b></label>
+    <label class="chk"><input id="auto" type="checkbox" /> Calidad automática (baja detalles si va lento)</label>
     <label>Sonido <input id="vol" type="range" min="0" max="100" step="5" /><b id="volv"></b></label>
     <div class="help">
-      <b>Móvil:</b> joystick a la izquierda, arrastra a la derecha para mirar; toca para poner, mantén pulsado para romper.<br />
-      <b>PC:</b> WASD para andar, espacio para saltar, ratón para mirar; clic izquierdo rompe, clic derecho pone; 1–9 o rueda para elegir bloque.
+      <b>Móvil:</b> joystick a la izquierda, arrastra a la derecha para mirar; toca para poner o usar, mantén pulsado para romper o golpear; 🎒 abre el inventario y las recetas.<br />
+      <b>PC:</b> WASD para andar, espacio para saltar, ratón para mirar; clic izquierdo rompe, clic derecho pone; 1–9 o rueda para elegir; E abre el inventario. Usa la mesa de trabajo y el horno cerca para más recetas.
     </div>
     <div id="ver"></div>
   </div>

@@ -3,10 +3,10 @@ import { chromium } from 'playwright'
 import { serve, open, check } from './serve.mjs'
 const s = await serve(5314); const { browser, page, errs } = await open(chromium, 5314)
 const before = await page.evaluate(() => {
-  localStorage.clear(); const g = window.__PEKACUBOS__; g.newWorld(1234); g.play(); g.manual = true; g.advance(0.5)
+  localStorage.clear(); const g = window.__PEKACUBOS__; g.newWorld(1234); g.play(); g.manual = true; g.mobsEnabled = false; g.advance(0.5)
   g.player.pitch = -1.55; const h = g.raycast(); g.input.breaking = true
   for (let i = 0; i < 400 && g.world.get(h.x, h.y, h.z) !== 0; i++) g.advance(1 / 60); g.input.breaking = false
-  g.sel = 7; g.player.pitch = -0.5; const t = g.raycast(); g.place(); const pl = [t.x + t.n[0], t.y + t.n[1], t.z + t.n[2]]
+  g.sel = g.hotbar.indexOf(10); g.player.pitch = -0.5; const t = g.raycast(); g.place(); const pl = [t.x + t.n[0], t.y + t.n[1], t.z + t.n[2]]
   g.player.pos.x += 0.25; g.player.yaw = 1.1
   document.querySelector('#dist').value = 6; document.querySelector('#dist').dispatchEvent(new Event('input'))
   return { broken: [h.x, h.y, h.z], placed: pl, inv: { ...g.inv }, pos: g.player.pos.toArray(), yaw: g.player.yaw, seed: g.world.seed }

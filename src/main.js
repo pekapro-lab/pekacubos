@@ -1,38 +1,49 @@
 import './style.css'
 import { Game } from './game.js'
-import { BLOCKS, HOTBAR } from './blocks.js'
-import { iconURL } from './textures.js'
+import { BLOCKS, isBlock, itemName } from './blocks.js'
+import { iconURL, itemCanvas, heartCanvas } from './textures.js'
+import { RECIPES } from './crafting.js'
 
 const $ = (s) => document.querySelector(s)
 const game = new Game($('#c'))
 window.__PEKACUBOS__ = game
 const SET_KEY = 'pekacubos.settings.v1'
-const settings = Object.assign({ dist: matchMedia('(pointer: coarse)').matches ? 3 : 5, vol: 70 }, JSON.parse(localStorage.getItem(SET_KEY) || '{}'))
+const settings = Object.assign({ dist: matchMedia('(pointer: coarse)').matches ? 3 : 5, vol: 70, auto: true }, JSON.parse(localStorage.getItem(SET_KEY) || '{}'))
 const touch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window
 document.body.classList.toggle('touch', touch)
 $('#ver').textContent = 'v' + __PEKACUBOS_VERSION__
 
 // ---------- HUD ----------
 const hot = $('#hotbar')
-HOTBAR.forEach((id, i) => {
+const icons = {}
+const icon = (id) => icons[id] || (icons[id] = isBlock(id) ? iconURL(game.atlas.canvas, BLOCKS[id].tiles[1]) : (() => { const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(itemCanvas(id), 0, 0, 32, 32); return c.toDataURL() })())
+for (let i = 0; i < 9; i++) {
   const d = document.createElement('div'); d.className = 'slot'; d.dataset.i = i
-  d.innerHTML = `<img src="${iconURL(game.atlas.canvas, BLOCKS[id].tiles[1])}"><span></span>`
+  d.innerHTML = `<img><span></span>`
   d.addEventListener('pointerdown', (e) => { e.stopPropagation(); game.sel = i; game.emit() })
   hot.appendChild(d)
-})
+}
+const hearts = [0, 1, 2].map((k) => heartCanvas(k).toDataURL())
+const hpEl = $('#hp'); for (let i = 0; i < 10; i++) hpEl.appendChild(document.createElement('img'))
 let toastT
 game.toast = (m) => { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 1600) }
+let hurtT
 game.listeners.add(() => {
-  hot.querySelectorAll('.slot').forEach((d, i) => { d.classList.toggle('sel', i === game.sel); const n = game.inv[HOTBAR[i]] || 0; d.querySelector('span').textContent = n; d.classList.toggle('empty', !n) })
-  $('#bname').textContent = BLOCKS[HOTBAR[game.sel]].name
+  if (game.hurtFlash > 0.3) { $('#hurt').classList.add('on'); clearTimeout(hurtT); hurtT = setTimeout(() => $('#hurt').classList.remove('on'), 120) }
+  hot.querySelectorAll('.slot').forEach((d, i) => { const id = game.hotbar[i]; d.classList.toggle('sel', i === game.sel); const n = game.inv[id] || 0; const im = d.querySelector('img'); const u = icon(id); if (im.getAttribute('src') !== u) im.src = u; d.querySelector('span').textContent = n; d.classList.toggle('empty', !n) })
+  $('#bname').textContent = itemName(game.selected())
+  hpEl.querySelectorAll('img').forEach((im, i) => { const v = game.hp - i * 2; const u = hearts[v >= 2 ? 2 : v === 1 ? 1 : 0]; if (im.getAttribute('src') !== u) im.src = u })
+  $('#dead').classList.toggle('hidden', !game.dead); if (game.dead) $('#deadwhy').textContent = game.deathCause === 'caída' ? 'Te has caído desde muy alto.' : 'Te ha alcanzado un Sombrajo.'
+  if (!$('#craft').classList.contains('hidden')) renderCraft()
 })
 
 // ---------- menu ----------
 function applySettings() {
-  game.viewDist = +settings.dist; game.sfx.setVolume(settings.vol / 100)
+  game.viewDist = +settings.dist; game.sfx.setVolume(settings.vol / 100); game.autoQuality = settings.auto; $('#auto').checked = settings.auto
   $('#dist').value = settings.dist; $('#distv').textContent = settings.dist; $('#vol').value = settings.vol; $('#volv').textContent = settings.vol + '%'
   localStorage.setItem(SET_KEY, JSON.stringify(settings))
 }
+$('#auto').onchange = (e) => { settings.auto = e.target.checked; applySettings() }
 $('#dist').oninput = (e) => { settings.dist = +e.target.value; applySettings() }
 $('#vol').oninput = (e) => { settings.vol = +e.target.value; applySettings() }
 applySettings()
@@ -56,6 +67,36 @@ $('#new').onclick = () => {
 }
 $('#pause').addEventListener('pointerdown', (e) => { e.stopPropagation(); showMenu() })
 game.showMenu = showMenu; game.play = play
+$('#respawn').addEventListener('click', () => { game.respawn() })
+// ---------- inventory + crafting ----------
+let pickFor = null
+function renderCraft() {
+  const inv = $('#invgrid'); inv.innerHTML = ''
+  const ids = Object.keys(game.inv).map(Number).filter((id) => game.inv[id] > 0).sort((a, b) => a - b)
+  if (!ids.length) inv.innerHTML = '<div class="muted">Inventario vacío</div>'
+  for (const id of ids) {
+    const b = document.createElement('button'); b.className = 'it'; b.title = itemName(id)
+    b.innerHTML = `<img src="${icon(id)}"><span>${game.inv[id]}</span><small>${itemName(id)}</small>`
+    b.onclick = () => { game.hotbar[game.sel] = id; game.emit(); game.toast(itemName(id) + ' → hueco ' + (game.sel + 1)) }
+    inv.appendChild(b)
+  }
+  const rl = $('#recipes'); rl.innerHTML = ''
+  for (const r of RECIPES) {
+    const st = game.craftState(r)
+    const row = document.createElement('div'); row.className = 'rec' + (st.ok ? '' : ' no'); row.dataset.id = r.id
+    const ing = r.inp.map(([id, n]) => `<span class="${(game.inv[id] || 0) >= n ? '' : 'miss'}"><img src="${icon(id)}">${n}</span>`).join(' + ')
+    row.innerHTML = `<div class="rin">${ing} → <img src="${icon(r.out[0])}"><b>${r.out[1]}</b> ${itemName(r.out[0])}</div>` +
+      `<div class="rneed">${st.needName ? (st.needOK ? '✔ ' : '✖ Necesitas ') + st.needName + ' cerca' : 'A mano'}</div>`
+    const b1 = document.createElement('button'); b1.textContent = 'Fabricar'; b1.disabled = !st.ok; b1.onclick = () => { game.craft(r.id, 1); renderCraft() }
+    const b5 = document.createElement('button'); b5.textContent = '×5'; b5.disabled = !st.ok; b5.onclick = () => { game.craft(r.id, 5); renderCraft() }
+    row.append(b1, b5); rl.appendChild(row)
+  }
+}
+function openCraft() { game.running = false; game.input.breaking = false; game.input.mx = game.input.mz = 0; renderCraft(); $('#craft').classList.remove('hidden'); if (document.pointerLockElement) document.exitPointerLock() }
+function closeCraft() { $('#craft').classList.add('hidden'); game.running = true; if (!touch) game.canvas.requestPointerLock?.() }
+game.openCraft = openCraft; game.closeCraft = closeCraft; window.__RECIPES__ = RECIPES
+$('#bcraft').addEventListener('pointerdown', (e) => e.stopPropagation()); $('#bcraft').addEventListener('click', (e) => { e.stopPropagation(); openCraft() })
+$('#craftclose').onclick = closeCraft
 addEventListener('pagehide', () => game.save())
 document.addEventListener('visibilitychange', () => { if (document.hidden) { game.save(); if (game.running) showMenu(); game.sfx.suspend() } })
 
@@ -68,13 +109,15 @@ function keyMove() {
   i.jump = keys.has('Space')
 }
 addEventListener('keydown', (e) => {
+  if (e.code === 'KeyE' && !$('#craft').classList.contains('hidden')) { closeCraft(); return }
   if (!game.running) return
   keys.add(e.code); keyMove()
   if (/^Digit[1-9]$/.test(e.code)) { game.sel = +e.code[5] - 1; game.emit() }
   if (e.code === 'Space') e.preventDefault()
+  if (e.code === 'KeyE') openCraft()
 })
 addEventListener('keyup', (e) => { keys.delete(e.code); keyMove() })
-document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && game.running && !touch) showMenu() })
+document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && game.running && !touch && $('#craft').classList.contains('hidden')) showMenu() })
 const look = (dx, dy, k) => { const p = game.player; p.yaw -= dx * k; p.pitch = Math.max(-1.55, Math.min(1.55, p.pitch - dy * k)) }
 addEventListener('mousemove', (e) => { if (document.pointerLockElement === game.canvas) look(e.movementX, e.movementY, 0.0025) })
 game.canvas.addEventListener('mousedown', (e) => {
@@ -128,7 +171,8 @@ let btnBreak = false
 const hold = (el, on, off) => { el.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); game.sfx.unlock(); on() }); for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, off) }
 hold($('#bjump'), () => (game.input.jump = true), () => (game.input.jump = false))
 hold($('#bbreak'), () => { btnBreak = true; game.input.breaking = true }, () => { btnBreak = false; game.input.breaking = false })
-hold($('#bplace'), () => game.place(), () => {})
+let placeRep
+hold($('#bplace'), () => { game.place(); clearInterval(placeRep); placeRep = setInterval(() => game.running && game.place(), 260) }, () => clearInterval(placeRep))
 
 // Start on the menu
 showMenu()

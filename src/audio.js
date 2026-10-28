@@ -32,3 +32,4 @@ export class Sfx {
     o.connect(g).connect(this.master); o.start(t); o.stop(t + dur + 0.02)
   }
 }
+Sfx.prototype.hurt = function () { this.tone(220, 0.18, 0.35); this.burst('dirt', 0.12, 0.5, 0.6) }

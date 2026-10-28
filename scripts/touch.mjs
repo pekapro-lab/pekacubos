@@ -7,7 +7,7 @@ const { browser, page, errs } = await open(chromium, 5313, { ctx: { viewport: { 
 const cdp = await page.context().newCDPSession(page)
 const T = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y, id]) => ({ x, y, id })) })
 const st = () => page.evaluate(() => { const g = window.__PEKACUBOS__; return { x: g.player.pos.x, y: g.player.pos.y, z: g.player.pos.z, yaw: g.player.yaw, pitch: g.player.pitch, vy: g.player.vel.y, inv: { ...g.inv }, sel: g.sel, brk: g.input.breaking, touch: document.body.classList.contains('touch') } })
-await page.evaluate(() => { localStorage.clear(); const g = window.__PEKACUBOS__; g.newWorld(42) })
+await page.evaluate(() => { localStorage.clear(); const g = window.__PEKACUBOS__; g.newWorld(42); g.mobsEnabled = false; g.noDamage = true })
 await page.tap('#play'); await page.waitForTimeout(300)
 // flat arena so movement is unobstructed
 await page.evaluate(() => { const g = window.__PEKACUBOS__, P = g.player, x = Math.floor(P.pos.x), z = Math.floor(P.pos.z), y = Math.round(P.pos.y)
