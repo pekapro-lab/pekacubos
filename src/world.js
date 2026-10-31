@@ -1,5 +1,6 @@
 import { AIR, GRASS, DIRT, STONE, SAND, WATER, WOOD, LEAVES, BEDROCK, isSolid } from './blocks.js'
 import { fbm, vnoise, hash2 } from './noise.js'
+import { PLOT, BLEND, plotDist, siteHeight, buildVillage } from './village.js'
 export const CS = 16, CH = 128, WATER_LEVEL = 20
 export const idx = (lx, y, lz) => (y * CS + lz) * CS + lx
 export const ckey = (cx, cz) => cx + ',' + cz
@@ -14,6 +15,23 @@ export class World {
     this.mods = new Map() // key -> Map(index -> id | meta << 8)  (v1 saves only stored ids: compatible)
     this.onChange = null
     this.active = new Set() // water cells to update ("x,y,z")
+    this.village = null // Pekaville layout when enabled (see enableVillage)
+  }
+  // Must be called before any chunk is generated. Deterministic for the seed.
+  enableVillage() {
+    const H = siteHeight((x, z) => this.heightAt(x, z))
+    this.village = buildVillage(H, this.seed)
+    const per = new Map()
+    for (const [k, id] of this.village.blocks) { const [x, y, z] = k.split(',').map(Number); const ck = ckey(Math.floor(x / CS), Math.floor(z / CS)); if (!per.has(ck)) per.set(ck, []); per.get(ck).push([x, y, z, id]) }
+    this.village.per = per
+    return this.village
+  }
+  genHeight(x, z) { // natural height, flattened on the Pekaville plot and blended around it
+    const h = this.heightAt(x, z)
+    if (!this.village) return h
+    const d = plotDist(x, z); if (d === 0) return this.village.H
+    if (d > BLEND) return h
+    return Math.round(this.village.H + (h - this.village.H) * (d / BLEND))
   }
   heightAt(x, z) {
     const s = this.seed
@@ -26,7 +44,7 @@ export class World {
     const d = new Uint8Array(CS * CS * CH), s = this.seed
     const hs = new Int16Array(CS * CS)
     for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) {
-      const wx = cx * CS + lx, wz = cz * CS + lz, h = this.heightAt(wx, wz)
+      const wx = cx * CS + lx, wz = cz * CS + lz, h = this.genHeight(wx, wz)
       hs[lz * CS + lx] = h
       const beach = h <= WATER_LEVEL + 1
       for (let y = 0; y < CH; y++) {
@@ -43,6 +61,7 @@ export class World {
     for (let lz = 2; lz < CS - 2; lz++) for (let lx = 2; lx < CS - 2; lx++) {
       const wx = cx * CS + lx, wz = cz * CS + lz, h = hs[lz * CS + lx]
       if (d[idx(lx, h, lz)] !== GRASS || hash2(wx, wz, s + 33) > 0.018) continue
+      if (this.village && plotDist(wx, wz) <= BLEND + 2) continue // keep the village clear of wild trees
       const th = 4 + Math.floor(hash2(wx, wz, s + 34) * 2)
       for (let y = h + 1; y <= h + th; y++) d[idx(lx, y, lz)] = WOOD
       const top = h + th
@@ -56,6 +75,8 @@ export class World {
         if (d[i] === AIR) d[i] = LEAVES
       }
     }
+    const vb = this.village && this.village.per.get(ckey(cx, cz))
+    if (vb) for (const [x, y, z, id] of vb) d[idx(x - cx * CS, y, z - cz * CS)] = id
     const meta = new Uint8Array(CS * CS * CH)
     const m = this.mods.get(ckey(cx, cz))
     if (m) for (const [i, v] of m) { d[i] = v & 255; meta[i] = v >> 8 }

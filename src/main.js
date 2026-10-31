@@ -97,6 +97,30 @@ function closeCraft() { $('#craft').classList.add('hidden'); game.running = true
 game.openCraft = openCraft; game.closeCraft = closeCraft; window.__RECIPES__ = RECIPES
 $('#bcraft').addEventListener('pointerdown', (e) => e.stopPropagation()); $('#bcraft').addEventListener('click', (e) => { e.stopPropagation(); openCraft() })
 $('#craftclose').onclick = closeCraft
+
+// ---------- chest ----------
+const chestEl = document.createElement('div'); chestEl.id = 'chest'; chestEl.className = 'hidden'
+chestEl.innerHTML = `<div class="cpanel"><div class="chead"><b>Cofre</b><span><button id="chestall">Coger todo</button> <button id="chestclose">Cerrar ✕</button></span></div>
+<div class="ccols"><div><div class="ctitle">En el cofre <small>(toca para coger)</small></div><div id="chestgrid" class="grid"></div></div>
+<div><div class="ctitle">Tu inventario <small>(toca para guardar)</small></div><div id="chestinv" class="grid"></div></div></div></div>`
+document.body.appendChild(chestEl)
+let chestKey = null
+function itemsGrid(el, bag, onPick, empty) {
+  el.innerHTML = ''
+  const ids = Object.keys(bag).map(Number).filter((id) => bag[id] > 0).sort((a, b) => a - b)
+  if (!ids.length) el.innerHTML = `<div class="muted">${empty}</div>`
+  for (const id of ids) { const b = document.createElement('button'); b.className = 'it'; b.title = itemName(id); b.dataset.id = id
+    b.innerHTML = `<img src="${icon(id)}"><span>${bag[id]}</span><small>${itemName(id)}</small>`; b.onclick = () => { onPick(id); renderChest() }; el.appendChild(b) }
+}
+function renderChest() {
+  if (!chestKey) return
+  itemsGrid($('#chestgrid'), game.chests[chestKey] || {}, (id) => game.chestTake(chestKey, id), 'El cofre está vacío')
+  itemsGrid($('#chestinv'), game.inv, (id) => game.chestPut(chestKey, id), 'Inventario vacío')
+}
+function openChest(key) { chestKey = key; game.running = false; game.input.breaking = false; game.input.mx = game.input.mz = 0; renderChest(); chestEl.classList.remove('hidden'); if (document.pointerLockElement) document.exitPointerLock() }
+function closeChest() { chestKey = null; chestEl.classList.add('hidden'); game.running = true; game.save(); if (!touch) game.canvas.requestPointerLock?.() }
+game.openChest = openChest; game.closeChest = closeChest
+$('#chestclose').onclick = closeChest; $('#chestall').onclick = () => { game.chestTakeAll(chestKey); renderChest() }
 addEventListener('pagehide', () => game.save())
 document.addEventListener('visibilitychange', () => { if (document.hidden) { game.save(); if (game.running) showMenu(); game.sfx.suspend() } })
 
@@ -110,6 +134,7 @@ function keyMove() {
 }
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyE' && !$('#craft').classList.contains('hidden')) { closeCraft(); return }
+  if ((e.code === 'KeyE' || e.code === 'Escape') && chestKey) { closeChest(); return }
   if (!game.running) return
   keys.add(e.code); keyMove()
   if (/^Digit[1-9]$/.test(e.code)) { game.sel = +e.code[5] - 1; game.emit() }
@@ -117,7 +142,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyE') openCraft()
 })
 addEventListener('keyup', (e) => { keys.delete(e.code); keyMove() })
-document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && game.running && !touch && $('#craft').classList.contains('hidden')) showMenu() })
+document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && game.running && !touch && $('#craft').classList.contains('hidden') && !chestKey) showMenu() })
 const look = (dx, dy, k) => { const p = game.player; p.yaw -= dx * k; p.pitch = Math.max(-1.55, Math.min(1.55, p.pitch - dy * k)) }
 addEventListener('mousemove', (e) => { if (document.pointerLockElement === game.canvas) look(e.movementX, e.movementY, 0.0025) })
 game.canvas.addEventListener('mousedown', (e) => {

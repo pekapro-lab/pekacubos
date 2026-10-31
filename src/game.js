@@ -1,5 +1,7 @@
 import * as THREE from 'three'
-import { AIR, WATER, BLOCKS, ITEMS, HOTBAR, HOTBAR2, PLANKS, GLASS, BRICK, TORCH, LEAVES, STICK, BUCKET, WATER_BUCKET, TABLE, FURNACE, isBlock, itemName } from './blocks.js'
+import { AIR, WATER, BLOCKS, ITEMS, HOTBAR, HOTBAR2, PLANKS, GLASS, BRICK, TORCH, LEAVES, STICK, BUCKET, WATER_BUCKET, TABLE, FURNACE, CHEST, TOOL_SOUNDS, isBlock, itemName } from './blocks.js'
+import { CHUNKS as VILLAGE_CHUNKS, STARTER_CHEST } from './village.js'
+import { buildDecor } from './decor.js'
 import { World, CS, CH, ckey } from './world.js'
 import { buildChunk } from './mesher.js'
 import { makeAtlas, makeCracks, makeSkin, itemCanvas, NT } from './textures.js'
@@ -152,19 +154,41 @@ export class Game {
   groundReady() { const e = this.meshes.get(ckey(Math.floor(this.player.pos.x / CS), Math.floor(this.player.pos.z / CS))); return !!(e && e.built) }
   isIdle() { return !this.queue.length && !this.inflight && !this.pendingChunks && [...this.meshes.values()].every((e) => e.built) }
   // ---------- world lifecycle ----------
-  setupWorld(seed) {
+  setupWorld(seed, village = false) {
     this.ready = false; this.waitT = 0
     this.clearMeshes(); for (const m of this.mobs) m.dispose(this.scene); this.mobs = []
+    if (this.decor) { this.scene.remove(this.decor.root); this.decor = null }
     this.world = new World(seed); this.world.onChange = (x, y, z, w) => this.dirty(x, y, z, w)
+    this.chests = {}
+    if (village) { const v = this.world.enableVillage(); this.decor = buildDecor(v.decor); this.scene.add(this.decor.root) }
   }
-  newWorld(seed = (Math.random() * 1e9) | 0) {
-    this.setupWorld(seed)
+  // Pekaville is on for every new world (tests can pass { village: false } or set villageDefault = false)
+  newWorld(seed = (Math.random() * 1e9) | 0, opts = {}) {
+    const village = opts.village ?? this.villageDefault ?? true
+    this.setupWorld(seed, village)
     this.inv = { [PLANKS]: 32, [GLASS]: 16, [BRICK]: 16, [TORCH]: 8, [BUCKET]: 1 }; this.sel = 2; this.hotbar = HOTBAR2.slice(); this.time = 0.3
     this.hp = MAXHP; this.dead = false
+    if (village) this.fillStarterChest()
     this.spawn(); this.spawnPoint = this.player.pos.clone(); this.save(); this.emit()
   }
+  fillStarterChest() { const v = this.world.village; if (v) this.chests[v.chest.join(',')] = { ...STARTER_CHEST } }
+  // ---------- chests ----------
+  chestAt(x, y, z) { const k = x + ',' + y + ',' + z; return this.chests[k] || (this.chests[k] = {}) }
+  chestTake(key, id, n = Infinity) {
+    const c = this.chests[key]; if (!c || !(c[id] > 0)) return 0
+    const k = Math.min(n, c[id]); c[id] -= k; if (!c[id]) delete c[id]; this.give(id, k)
+    if (!this.hotbar.includes(id)) { const e = this.hotbar.findIndex((h) => !(this.inv[h] > 0)); if (e >= 0) this.hotbar[e] = id }
+    this.emit(); return k
+  }
+  chestTakeAll(key) { const c = this.chests[key] || {}; let n = 0; for (const id of Object.keys(c).map(Number)) n += this.chestTake(key, id); return n }
+  chestPut(key, id, n = Infinity) {
+    if (!(this.inv[id] > 0)) return 0
+    const k = Math.min(n, this.inv[id]); this.inv[id] -= k; const c = this.chests[key] || (this.chests[key] = {}); c[id] = (c[id] || 0) + k; this.emit(); return k
+  }
+  armorPoints() { let p = 0; for (const id in this.inv) if (this.inv[id] > 0 && ITEMS[id]?.armor) p += ITEMS[id].armor; return p }
   spawn() {
     const w = this.world
+    if (w.village) { const [x, y, z] = w.village.spawn; this.player.pos.set(x, y, z); this.player.vel.set(0, 0, 0); this.player.yaw = 0; this.player.pitch = -0.05; this.fallTop = null; return }
     for (let r = 0; r < 200; r++) {
       const x = Math.floor(Math.cos(r) * r * 2) + 8, z = Math.floor(Math.sin(r) * r * 2) + 8
       const s = w.surface(x, z)
@@ -175,12 +199,19 @@ export class Game {
   load() {
     try {
       const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (!s || (s.v !== 1 && s.v !== 2)) return false
-      this.setupWorld(s.seed); this.world.loadMods(s.mods || {})
+      // Pekaville in old saves: only if the starting area was never touched (no saved changes in its chunks)
+      const mods = s.mods || {}, untouched = VILLAGE_CHUNKS.every((k) => !mods[k] || !mods[k].length)
+      const village = s.village === true || (s.village === undefined && untouched)
+      this.setupWorld(s.seed, village); this.world.loadMods(mods)
+      this.chests = s.chests || {}
+      this.villageAdded = village && s.village === undefined
+      if (this.villageAdded) this.fillStarterChest()
       this.inv = s.inv || {}; this.sel = s.sel || 0; this.time = s.time ?? 0.3
       this.hotbar = Array.isArray(s.hotbar) ? s.hotbar : HOTBAR.slice() // v1 saves used the fixed v1 hotbar
       this.hp = s.hp ?? MAXHP; this.dead = false; if (this.hp <= 0) this.hp = MAXHP
       const p = s.player; this.player.pos.set(p.x, p.y, p.z); this.player.yaw = p.yaw; this.player.pitch = p.pitch; this.player.vel.set(0, 0, 0)
       this.spawnPoint = s.spawn ? new THREE.Vector3(...s.spawn) : this.player.pos.clone()
+      if (this.villageAdded) { this.spawnPoint = new THREE.Vector3(...this.world.village.spawn); this.player.pos.copy(this.spawnPoint); this.player.yaw = 0; this.player.pitch = -0.05 } // the old spot may now be inside the house
       this.fallTop = null; this.emit(); return true
     } catch { return false }
   }
@@ -188,7 +219,7 @@ export class Game {
   save() {
     if (!this.world) return
     const p = this.player.pos
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 2, seed: this.world.seed, mods: this.world.serializeMods(), inv: this.inv, sel: this.sel, hotbar: this.hotbar, time: this.time, hp: this.hp,
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 2, seed: this.world.seed, mods: this.world.serializeMods(), inv: this.inv, sel: this.sel, hotbar: this.hotbar, time: this.time, hp: this.hp, village: !!this.world.village, chests: this.chests,
       spawn: this.spawnPoint ? this.spawnPoint.toArray() : null, player: { x: p.x, y: p.y, z: p.z, yaw: this.player.yaw, pitch: this.player.pitch } }))
   }
   // ---------- chunk meshes ----------
@@ -272,6 +303,7 @@ export class Game {
   // ---------- health ----------
   damage(n, from, why) {
     if (this.dead || this.noDamage || n <= 0) return
+    const ap = this.armorPoints(); if (ap && why !== 'caída') n = Math.max(1, Math.round(n * (1 - Math.min(0.6, ap * 0.04)))) // armour carried in the inventory protects from hits
     this.hp = Math.max(0, this.hp - n); this.lastHurt = this.clock; this.hurtFlash = 0.35; this.sfx.hurt?.()
     if (from) { const d = this.player.pos.clone().sub(from).setY(0).normalize(); this.player.vel.x = d.x * 7; this.player.vel.z = d.z * 7; this.player.vel.y = 5; this.knock = 0.25 }
     if (this.hp <= 0) { this.dead = true; this.deathCause = why || 'golpe'; this.input.breaking = false }
@@ -325,6 +357,7 @@ export class Game {
     }
     const h = this.raycast(); if (!h) return false
     if (h.id === TABLE || h.id === FURNACE) { this.openCraft?.(); return false }
+    if (h.id === CHEST) { this.chestAt(h.x, h.y, h.z); this.openChest?.(h.x + ',' + h.y + ',' + h.z); this.sfx.place('wood'); return false }
     if (!isBlock(id) && id !== WATER_BUCKET) return false
     const x = h.x + h.n[0], y = h.y + h.n[1], z = h.z + h.n[2]
     const cur = this.world.get(x, y, z); if (cur !== AIR && cur !== WATER) return false
@@ -347,16 +380,18 @@ export class Game {
     this.attackCd -= dt
     if (this.input.breaking && !this.dead) {
       const m = this.targetMob()
-      if (m) { this.brk.key = null; this.crack.visible = false; if (this.attackCd <= 0) { this.attackCd = 0.45; this.swing = 1; m.hit(4, this.player.pos); this.sfx.dig('wood') } return }
+      if (m) { this.brk.key = null; this.crack.visible = false; if (this.attackCd <= 0) { const sw = this.inv[this.selected()] > 0 && ITEMS[this.selected()]?.dmg; this.attackCd = 0.45; this.swing = 1; m.hit(sw || 4, this.player.pos); this.sfx.dig('wood') } return }
     }
     const h = this.input.breaking && !this.dead ? this.raycast() : null
     if (!h || BLOCKS[h.id].hard === Infinity) { this.brk.key = null; this.brk.t = 0; this.crack.visible = false; return }
     const key = h.x + ',' + h.y + ',' + h.z
     if (key !== this.brk.key) { this.brk.key = key; this.brk.t = 0 }
-    this.brk.t += dt; this.swing = Math.max(this.swing, 0.01)
+    const tl = this.inv[this.selected()] > 0 && ITEMS[this.selected()]?.tool
+    this.brk.t += dt * (tl && TOOL_SOUNDS[tl].includes(BLOCKS[h.id].sound) ? ITEMS[this.selected()].speed : 1); this.swing = Math.max(this.swing, 0.01)
     const f = this.brk.t / BLOCKS[h.id].hard
     if (((this.brk.t * 5) | 0) !== (((this.brk.t - dt) * 5) | 0)) this.sfx.dig(BLOCKS[h.id].sound)
     if (f >= 1) {
+      if (h.id === CHEST) { const k = h.x + ',' + h.y + ',' + h.z, c = this.chests[k]; if (c) { for (const id in c) this.give(+id, c[id]); delete this.chests[k] } } // contents spill into the inventory
       this.world.set(h.x, h.y, h.z, AIR); this.give(BLOCKS[h.id].drop || h.id)
       if (h.id === LEAVES && Math.random() < 0.15) this.give(STICK)
       this.sfx.brk(BLOCKS[h.id].sound); this.brk.key = null; this.brk.t = 0; this.crack.visible = false; this.emit(); return
@@ -533,6 +568,7 @@ export class Game {
     for (const m of [this.matSolid, this.matWater]) { m.uniforms.daylight.value = L; m.uniforms.moon.value = this.moonlight(); m.uniforms.fogColor.value.copy(fog) }
     this.renderer.setClearColor(sky)
     this.updateSky(L)
+    if (this.decor) for (const m of this.decor.items) { const q = m.position, r = m.rotation.y, l = this.lightAtBody(q.x + Math.sin(r) * 0.4, q.y + 0.5, q.z + Math.cos(r) * 0.4); m.traverse((o) => o.material && o.material.color && o.material.color.setScalar(l)) }
     const e = this.eye(), hb = this.lightAtBody(e.x, e.y, e.z)
     this.armMat.color.setScalar(hb); this.sleeveMat.color.setScalar(hb); this.held.material.color.setScalar(Math.max(0.3, hb)); this.heldItem.material.color.setScalar(Math.max(0.3, hb))
     const h = this.running ? this.raycast() : null

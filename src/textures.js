@@ -50,6 +50,35 @@ export function makeAtlas() {
   // 18 lantern: dark frame + warm glass
   for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { const fr = x < 2 || y < 2 || x > 13 || y > 13 || x === 7 || x === 8
     px(g, o(18), x, y, fr ? [50, 48, 46] : [255, 200 + r() * 40, 90 + r() * 40]) }
+  // ---- v2.1 Pekaville tiles ----
+  const wood = (ox, x, y, k = 1) => { const row = y % 4 === 3 ? 0.72 : 1; px(g, ox, x, y, [150 * k * row, 100 * k * row, 52 * k * row]) }
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { // 19 chest side (planks, iron band + latch), 21 chest top
+    const band = y === 5 || y === 6, edge = x === 0 || x === 15 || y === 0 || y === 15, k = 0.9 + r() * 0.15
+    if (edge || band) px(g, o(19), x, y, band ? [70, 70, 76] : [92 * k, 58 * k, 28 * k]); else wood(o(19), x, y, k)
+    const e2 = x === 0 || x === 15 || y === 0 || y === 15; if (e2) px(g, o(21), x, y, [92 * k, 58 * k, 28 * k]); else wood(o(21), x, (x + 1), k) }
+  g.fillStyle = '#d8c060'; g.fillRect(o(19) + 6, 4, 4, 5); g.fillStyle = '#5a4a18'; g.fillRect(o(19) + 7, 6, 2, 2)
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { // 22 bed top: pillow + red blanket, 23 bed side
+    const pillow = y < 5 && x > 1 && x < 14, k = 0.92 + r() * 0.1
+    px(g, o(22), x, y, pillow ? [240 * k, 238 * k, 230 * k] : (x + y) % 6 === 0 ? [150 * k, 30 * k, 40 * k] : [196 * k, 44 * k, 52 * k])
+    px(g, o(23), x, y, y < 7 ? (y < 2 ? [235, 235, 228] : [196 * k, 44 * k, 52 * k]) : [150 * k, 100 * k, 52 * k]) }
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { // 24 stone tiles (baldosas): 2x2 slabs with grout
+    const grout = x % 8 === 0 || y % 8 === 0, k = 0.88 + r() * 0.16, q = ((x >> 3) + (y >> 3)) % 2 ? 1 : 0.92
+    px(g, o(24), x, y, grout ? [96, 92, 86] : [190 * k * q, 184 * k * q, 170 * k * q]) }
+  const flower = (ox, petal, mid) => { // 25-26-31 cross flowers (transparent background)
+    for (let y = 8; y < 16; y++) px(g, ox, 7, y, [60, 140, 50]); px(g, ox, 6, 11, [70, 160, 60]); px(g, ox, 8, 13, [70, 160, 60]); px(g, ox, 5, 10, [70, 160, 60]); px(g, ox, 9, 12, [70, 160, 60])
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [1, -1], [-1, 1], [-2, 0], [2, 0], [0, -2]]) px(g, ox, 7 + dx, 5 + dy, petal.map((v) => v * (0.85 + r() * 0.2)))
+    px(g, ox, 7, 5, mid) }
+  flower(o(25), [220, 40, 40], [40, 30, 20]); flower(o(26), [250, 250, 240], [250, 200, 40]); flower(o(31), [90, 120, 240], [250, 240, 150])
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { // 27 bookshelf side
+    const shelf = y === 0 || y === 7 || y === 8 || y === 15 || x === 0 || x === 15
+    if (shelf) { wood(o(27), x, 1, 0.9); continue }
+    const book = (x * 5 + (y > 7 ? 3 : 0)) % 7, cols = [[160, 40, 40], [40, 90, 160], [50, 130, 60], [200, 160, 60], [110, 60, 130], [180, 90, 40], [60, 60, 60]]
+    const c = cols[book], k = (y === 1 || y === 9) && x % 3 === 0 ? 0.5 : 0.85 + r() * 0.2; px(g, o(27), x, y, c.map((v) => v * k)) }
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { // 28 roof tiles (scalloped terracotta)
+    const yy = y % 4, sh = Math.abs(((x + (y >> 2) * 2) % 4) - 1.5) / 1.5, k = (yy === 3 ? 0.62 : 1 - yy * 0.06 - sh * 0.12) * (0.92 + r() * 0.12)
+    px(g, o(28), x, y, [178 * k, 72 * k, 48 * k]) }
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { const k = 0.6 + r() * 0.45; px(g, o(29), x, y, [34 * k, 104 * k, 36 * k]) } // 29 hedge (dense, no holes)
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { const k = 0.94 + r() * 0.07; px(g, o(30), x, y, [236 * k, 230 * k, 214 * k]) } // 30 plaster
   const tex = new THREE.CanvasTexture(c)
   tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false
   return { canvas: c, tex } // raw sRGB values; the chunk shader works in display space
@@ -98,6 +127,23 @@ export function itemCanvas(id) {
   if (id === 104 || id === 105) { const a = id === 104 ? ['#d9566b', '#f08a9a'] : ['#8a4a22', '#b8743a']
     for (let y = 4; y < 13; y++) for (let x = 3; x < 13; x++) if (Math.hypot((x - 8) * 0.9, y - 8.5) < 4.6) P(x, y, r() < 0.3 ? a[1] : a[0])
     for (let i = 0; i < 4; i++) P(12 + (i >> 1), 3 + i, '#f2eee4') }
+  const line = (pts, col) => { for (const [x, y] of pts) P(x, y, col) }
+  const diag = (n, x0, y0, col, col2) => { for (let i = 0; i < n; i++) { P(x0 + i, y0 - i, col); if (col2) P(x0 + i + 1, y0 - i, col2) } }
+  const MAT = { 106: ['#b8864a', '#8a5a2b'], 107: ['#9a9a9a', '#6e6e6e'], 108: ['#e6e8ec', '#a7adb6'], 109: ['#5ff0d8', '#1fa89a'] }
+  if (MAT[id]) { const [a, b] = MAT[id] // sword: blade diagonal, guard, handle
+    diag(9, 5, 10, a, b); P(13, 2, a); line([[2, 10], [3, 11], [4, 12], [5, 13], [6, 12], [4, 10], [3, 9]], '#4a3a20'); diag(3, 1, 14, '#6b4220', '#8a5a2b') }
+  if (id === 110 || id === 111 || id === 112) { diag(10, 3, 14, '#6b4220', '#8a5a2b') // handle
+    if (id === 110) line([[5, 3], [6, 2], [7, 2], [8, 2], [9, 2], [10, 3], [11, 4], [12, 5], [13, 6], [13, 7], [4, 4], [3, 5], [9, 3], [10, 4], [11, 5], [12, 6]], '#d6dae0')
+    if (id === 111) line([[10, 2], [11, 2], [12, 3], [13, 4], [13, 5], [12, 6], [11, 6], [10, 5], [11, 3], [12, 4], [12, 5], [11, 4], [11, 5], [9, 3]], '#d6dae0')
+    if (id === 112) line([[11, 2], [12, 2], [13, 3], [13, 4], [12, 5], [11, 5], [10, 4], [10, 3], [11, 3], [12, 3], [12, 4], [11, 4]], '#d6dae0') }
+  if (id >= 113 && id <= 116) { const shp = {
+      113: ['................', '................', '................', '....########....', '...##########...', '...##########...', '...###....###...', '...##......##...', '...##......##...'],
+      114: ['................', '..####....####..', '..############..', '..############..', '...##########...', '....########....', '....########....', '....########....', '....########....', '....########....', '....########....', '.....######.....'],
+      115: ['................', '................', '...##########...', '...##########...', '...####..####...', '...###....###...', '...###....###...', '...###....###...', '...###....###...', '...###....###...', '...###....###...'],
+      116: ['................', '................', '................', '................', '................', '................', '................', '...###....###...', '...###....###...', '...###....###...', '..####....####..', '..####....####..'] }[id]
+    shp.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === '#') P(x, y + 2, (x + y) % 5 === 0 ? '#ffffff' : (row[x - 1] !== '#' || row[x + 1] !== '#') ? '#8c939c' : '#d3d8de') })) }
+  if (id === 117) { for (let y = 4; y < 14; y++) for (let x = 3; x < 13; x++) if (Math.hypot(x - 7.8, (y - 9) * 1.05) < 4.8) P(x, y, x < 6 && y < 8 ? '#ff8a7a' : '#d42a2a'); line([[8, 2], [8, 3], [8, 4]], '#5a3a1c'); line([[9, 2], [10, 2], [10, 3]], '#4caf3c') }
+  if (id === 118) for (let y = 6; y < 12; y++) for (let x = 2; x < 14; x++) if (Math.hypot((x - 8) / 6, (y - 9) / 3) < 1) P(x, y, (x + y) % 4 === 0 && y < 9 ? '#f2d18a' : y < 8 ? '#c98b3a' : '#a8692a')
   return c
 }
 export function heartCanvas(state) { // original "gem" life icon: 0 empty, 1 half, 2 full

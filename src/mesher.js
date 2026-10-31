@@ -90,6 +90,8 @@ export function buildChunk(chunks, cx, cz) {
     if (id === AIR) continue
     const B = BLOCKS[id]
     if (B.shape === 'torch') { torch(solid, ox + lx, y, oz + lz, B.tiles[1], sky[i]); continue }
+    if (B.shape === 'cross') { cross(solid, ox + lx, y, oz + lz, B.tiles[1], sky[i], blk[i]); continue }
+    if (B.shape === 'box') { boxShape(solid, ox + lx, y, oz + lz, B, sky[i], blk[i], (dx, dy, dz) => OPQ[id3(x + dx, y + dy, z + dz)]); continue }
     for (const f of FACES) {
       const nx = x + f.d[0], ny = y + f.d[1], nz = z + f.d[2], n = id3(nx, ny, nz)
       if (id === WATER) { if (n === WATER || (n !== AIR && OPQ[n]) || (n !== AIR && f.d[1] !== 1)) continue }
@@ -145,6 +147,34 @@ function torch(buf, x, y, z, tile, s) {
       buf.u.push((tile + 0.4375 + (UVS[k][0]) * 0.125) / NT, f[4] === 1 ? 0.6 + UVS[k][1] * 0.08 : UVS[k][1] * 0.625)
       buf.l.push(s / 15, 1, f[4])
     }
+    const n = buf.n; buf.i.push(n, n + 1, n + 2, n, n + 2, n + 3); buf.n += 4
+  }
+}
+
+// two crossed quads (flowers); the texture's transparent pixels are cut by alphaTest
+function cross(buf, x, y, z, tile, s, b) {
+  const q = [[[0.15, 0, 0.15], [0.85, 0, 0.85], [0.85, 0.9, 0.85], [0.15, 0.9, 0.15]], [[0.85, 0, 0.15], [0.15, 0, 0.85], [0.15, 0.9, 0.85], [0.85, 0.9, 0.15]]]
+  for (const f of q) for (const rev of [false, true]) {
+    const c = rev ? [f[1], f[0], f[3], f[2]] : f
+    for (let k = 0; k < 4; k++) { buf.p.push(x + c[k][0], y + c[k][1], z + c[k][2]); const u = rev ? 1 - UVS[k][0] : UVS[k][0]; buf.u.push((tile + E + u * (1 - 2 * E)) / NT, UVS[k][1] * 0.9 + 0.0); buf.l.push(s / 15, b / 15, 0.9) }
+    const n = buf.n; buf.i.push(n, n + 1, n + 2, n, n + 2, n + 3); buf.n += 4
+  }
+}
+// a smaller-than-a-cube box (chest, bed); faces touching an opaque neighbour on the cell border are skipped
+function boxShape(buf, x, y, z, B, s, b, opq) {
+  const [x0, y0, z0, x1, y1, z1] = B.box
+  const F = [
+    [[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], 1.0, 0, [0, 1, 0], y1 >= 1],
+    [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], 0.5, 2, [0, -1, 0], y0 <= 0],
+    [[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], 0.75, 1, [1, 0, 0], x1 >= 1],
+    [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], 0.75, 1, [-1, 0, 0], x0 <= 0],
+    [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], 0.86, 1, [0, 0, 1], z1 >= 1],
+    [[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], 0.62, 1, [0, 0, -1], z0 <= 0],
+  ]
+  for (const f of F) {
+    if (f[7] && opq(...f[6])) continue
+    const tile = B.tiles[f[5]]
+    for (let k = 0; k < 4; k++) { const c = f[k]; buf.p.push(x + c[0], y + c[1], z + c[2]); buf.u.push((tile + E + UVS[k][0] * (1 - 2 * E)) / NT, f[5] === 1 ? UVS[k][1] * (y1 - y0) + (1 - (y1 - y0)) : UVS[k][1]); buf.l.push(s / 15, b / 15, f[4]) }
     const n = buf.n; buf.i.push(n, n + 1, n + 2, n, n + 2, n + 3); buf.n += 4
   }
 }

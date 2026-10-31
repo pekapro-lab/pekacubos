@@ -4,7 +4,8 @@ import { chromium } from 'playwright'
 import { serve, open, check } from './serve.mjs'
 const s = await serve(5324); const { browser, page, errs } = await open(chromium, 5324)
 const r = await page.evaluate(async () => {
-  const g = window.__PEKACUBOS__, o = {}; localStorage.clear(); g.newWorld(42); g.play(); g.manual = true; g.mobsEnabled = false; g.noDamage = true
+  const g = window.__PEKACUBOS__, o = {}; localStorage.clear(); g.newWorld(42, { village: false }); // natural terrain (Pekaville off) for the chunk-border check
+  g.play(); g.manual = true; g.mobsEnabled = false; g.noDamage = true
   const P = g.player, W = g.world, cx = Math.floor(P.pos.x), cz = Math.floor(P.pos.z), Y = 70
   // closed 9x9x5 stone room floating at y=70 (interior 7x7x3)
   for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) for (let dy = 0; dy <= 4; dy++) {
