@@ -10,7 +10,8 @@ import { boxHits, moveBody } from './physics.js'
 import { Mob, MOB_TYPES, rayBox } from './mobs.js'
 import { RECIPES, NEED_NAME } from './crafting.js'
 
-const SAVE_KEY = 'pekacubos.save.v1' // same key as v1: v1 saves load in v2
+// same key as v1 (v1 saves load in v2); the test copy uses its own key so it never touches the real save on the same origin
+const SAVE_KEY = 'pekacubos.save.v1' + (import.meta.env.VITE_SAVE_SUFFIX || '')
 const W = 0.3, HGT = 1.8, EYE = 1.62, REACH = 6, DAY = 600, MAXHP = 20
 const SKY_DAY = new THREE.Color(0x8ccbf0), SKY_NIGHT = new THREE.Color(0x05070f)
 
